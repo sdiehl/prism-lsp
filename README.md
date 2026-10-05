@@ -45,6 +45,28 @@ vim.api.nvim_create_autocmd("BufWritePre", {
 
 Syntax highlighting comes from `scripts/nvim` in the Prism repository.
 
+## Emacs
+
+Emacs 29 or later, with the built-in eglot client. `editors/emacs/prism-mode.el` provides highlighting and indentation and registers the server with eglot:
+
+```elisp
+(add-to-list 'load-path "~/Git/prism-lsp/editors/emacs")
+(require 'prism-mode)
+(add-hook 'prism-mode-hook #'eglot-ensure)
+```
+
+or with `use-package`:
+
+```elisp
+(use-package prism-mode
+  :load-path "~/Git/prism-lsp/editors/emacs"
+  :mode "\\.pr\\'"
+  :hook ((prism-mode . eglot-ensure)
+         (prism-mode . (lambda () (add-hook 'before-save-hook #'eglot-format-buffer nil t)))))
+```
+
+`M-.` goes to a definition, `M-?` finds references, `C-h .` shows the type at point, and `M-x eglot-format-buffer` formats.
+
 ## VS Code
 
 ```sh
