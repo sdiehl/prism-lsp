@@ -13,6 +13,8 @@ Projects are found by walking up to the nearest `prism.toml`, and its `src` dire
 
 ## Install
 
+Prebuilt binaries for macOS arm64 and Linux x64/arm64, and the VS Code extension, are attached to each [GitHub release](https://github.com/sdiehl/prism-lsp/releases). Put `prism-lsp` on your `PATH`. To build from source:
+
 ```sh
 cargo install --git https://github.com/sdiehl/prism-lsp
 ```
@@ -72,13 +74,20 @@ To format on save, add `eglot-format-buffer` to `before-save-hook` in Prism buff
 
 ## VS Code
 
+Download `prism-lsp.vsix` from the latest release and install it:
+
+```sh
+code --install-extension prism-lsp.vsix
+```
+
+To build it from source:
+
 ```sh
 git clone https://github.com/sdiehl/prism-lsp
 cd prism-lsp/editors/vscode
 npm install
 npm run compile
-npx vsce package
-code --install-extension prism-lsp-0.1.0.vsix
+npx vsce package -o prism-lsp.vsix
 ```
 
 The extension starts `prism-lsp` from `PATH`. Set `prism.server.path` to use another binary.
