@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 
 struct Client {
     child: Child,
-    stdin: ChildStdin,
+    stdin: Option<ChildStdin>,
     stdout: BufReader<ChildStdout>,
     next: i64,
 }
@@ -24,7 +24,7 @@ impl Client {
             .stdout(Stdio::piped())
             .spawn()
             .unwrap();
-        let stdin = child.stdin.take().unwrap();
+        let stdin = child.stdin.take();
         let stdout = BufReader::new(child.stdout.take().unwrap());
         let mut client = Self {
             child,
@@ -39,8 +39,9 @@ impl Client {
 
     fn send(&mut self, msg: &Value) {
         let body = msg.to_string();
-        write!(self.stdin, "Content-Length: {}\r\n\r\n{body}", body.len()).unwrap();
-        self.stdin.flush().unwrap();
+        let stdin = self.stdin.as_mut().unwrap();
+        write!(stdin, "Content-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+        stdin.flush().unwrap();
     }
 
     fn recv(&mut self) -> Value {
@@ -193,4 +194,17 @@ fn editing_session() {
 
     c.request("shutdown", Value::Null);
     c.notify("exit", Value::Null);
+}
+
+#[test]
+fn exits_when_the_editor_goes_away() {
+    let mut c = Client::start();
+    c.stdin = None;
+    for _ in 0..100 {
+        if c.child.try_wait().unwrap().is_some() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    panic!("server still running five seconds after its stdin closed");
 }

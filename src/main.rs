@@ -103,7 +103,9 @@ fn serve() -> Res<()> {
             Message::Response(_) => {}
         }
     }
+    // The writer thread ends once every sender is gone, the worker's included.
     drop(server);
+    drop(conn);
     io.join()?;
     Ok(())
 }
