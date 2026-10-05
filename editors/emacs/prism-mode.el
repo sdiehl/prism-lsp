@@ -9,11 +9,9 @@
 ;;; Commentary:
 
 ;; Syntax highlighting and indentation for Prism, and registration of
-;; `prism-lsp' with eglot.
+;; `prism-lsp' with eglot when eglot loads.
 
 ;;; Code:
-
-(require 'eglot)
 
 (defgroup prism nil
   "Prism language support."
@@ -82,7 +80,8 @@
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.pr\\'" . prism-mode))
 
-(add-to-list 'eglot-server-programs '(prism-mode . ("prism-lsp")))
+(with-eval-after-load 'eglot
+  (add-to-list 'eglot-server-programs '(prism-mode . ("prism-lsp"))))
 
 (provide 'prism-mode)
 ;;; prism-mode.el ends here
