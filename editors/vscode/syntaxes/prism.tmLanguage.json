@@ -1,0 +1,98 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Prism",
+  "scopeName": "source.prism",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#string" },
+    { "include": "#char" },
+    { "include": "#number" },
+    { "include": "#keyword" },
+    { "include": "#type" },
+    { "include": "#function" },
+    { "include": "#operator" }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        { "name": "comment.block.documentation.prism", "match": "--\\s*\\|.*$" },
+        { "name": "comment.line.double-dash.prism", "match": "--.*$" }
+      ]
+    },
+    "string": {
+      "patterns": [
+        { "name": "string.quoted.triple.prism", "begin": "r\"\"\"", "end": "\"\"\"" },
+        {
+          "name": "string.quoted.double.prism",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            { "name": "constant.character.escape.prism", "match": "\\\\." },
+            {
+              "name": "meta.interpolation.prism",
+              "begin": "\\{",
+              "end": "\\}",
+              "beginCaptures": { "0": { "name": "punctuation.section.interpolation.begin.prism" } },
+              "endCaptures": { "0": { "name": "punctuation.section.interpolation.end.prism" } },
+              "patterns": [{ "include": "$self" }]
+            }
+          ]
+        }
+      ]
+    },
+    "char": { "name": "constant.character.prism", "match": "'(\\\\.|[^'\\\\])'" },
+    "number": {
+      "patterns": [
+        { "name": "constant.numeric.float.prism", "match": "\\b[0-9][0-9_]*\\.[0-9][0-9_]*\\b" },
+        {
+          "name": "constant.numeric.integer.prism",
+          "match": "\\b(0x[0-9a-fA-F_]+|[0-9][0-9_]*)(i64|u64)?\\b"
+        }
+      ]
+    },
+    "keyword": {
+      "patterns": [
+        { "name": "constant.language.boolean.prism", "match": "\\b(true|false)\\b" },
+        {
+          "name": "keyword.control.prism",
+          "match": "\\b(if|then|else|elif|match|of|for|while|loop|break|continue|do|return|resume|handle|with|throw|try|catch|transact|mask)\\b"
+        },
+        { "name": "keyword.other.import.prism", "match": "\\b(import|pub|as|opaque)\\b" },
+        {
+          "name": "storage.type.prism",
+          "match": "\\b(fn|let|var|val|type|newtype|alias|effect|error|class|instance|canonical|pattern|stable|handler|logic|test)\\b"
+        },
+        {
+          "name": "storage.modifier.prism",
+          "match": "\\b(fip|fbip|replayable|total|assume|partial|borrow|deriving|where|given|forall|in|using|probe|reflect|requires|ensures|decreases|deprecated|each|view|make)\\b"
+        }
+      ]
+    },
+    "type": {
+      "patterns": [
+        { "name": "entity.name.namespace.prism", "match": "\\b[A-Z][A-Za-z0-9_]*(?=\\.[A-Za-z_])" },
+        {
+          "name": "support.type.primitive.prism",
+          "match": "\\b(Int|I64|U64|Bool|Float|Char|String|Unit)\\b"
+        },
+        { "name": "entity.name.type.prism", "match": "\\b[A-Z][A-Za-z0-9_]*\\b" }
+      ]
+    },
+    "function": {
+      "patterns": [
+        {
+          "match": "\\b(fn)\\s+([a-z_][A-Za-z0-9_']*)",
+          "captures": {
+            "1": { "name": "storage.type.prism" },
+            "2": { "name": "entity.name.function.prism" }
+          }
+        },
+        { "name": "entity.name.function.call.prism", "match": "\\b[a-z_][A-Za-z0-9_']*(?=\\()" }
+      ]
+    },
+    "operator": {
+      "name": "keyword.operator.prism",
+      "match": "->|<-|=>|:=|::|\\?\\?|\\?\\.|>>|<<|\\|\\||\\|>|&&|==\\.?|/=\\.?|<=\\.?|>=\\.?|[-+*/%<>=!|?^~\\\\]"
+    }
+  }
+}

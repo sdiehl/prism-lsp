@@ -1,0 +1,53 @@
+{
+  "name": "prism-lsp",
+  "displayName": "Prism",
+  "description": "Prism language support: diagnostics, types on hover, navigation, and formatting.",
+  "version": "0.1.0",
+  "publisher": "sdiehl",
+  "license": "MIT",
+  "repository": "https://github.com/sdiehl/prism-lsp",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages", "Formatters"],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "languages": [
+      {
+        "id": "prism",
+        "aliases": ["Prism", "prism"],
+        "extensions": [".pr"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "prism",
+        "scopeName": "source.prism",
+        "path": "./syntaxes/prism.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Prism",
+      "properties": {
+        "prism.server.path": {
+          "type": "string",
+          "default": "prism-lsp",
+          "description": "Path to the prism-lsp executable."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.4.0"
+  }
+}

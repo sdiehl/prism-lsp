@@ -1,0 +1,13 @@
+-- | A shape in the plane.
+type Shape = Circle(Int) | Square(Int)
+
+-- | Twice the area, so it stays an integer.
+fn area(s : Shape) : Int =
+  match s of
+    Circle(r) => 3 * r * r
+    Square(w) => w * w
+
+fn main() : Unit ! {IO} =
+  let x = area(Circle(2))
+  println(max(x, area(Square(3))))
+  println(length(reverse([x, 2])))
