@@ -1,5 +1,6 @@
 use lsp_types::SymbolKind;
 use prism::parse::parse;
+use prism::syntax::ast::Span;
 
 /// A top-level declaration and the names it introduces.
 #[derive(Clone, Debug)]
@@ -22,34 +23,31 @@ pub struct Member {
 pub fn outline(src: &str) -> Option<Vec<Item>> {
     let p = parse(src).ok()?.program;
     let mut items = Vec::new();
-    let mut push =
-        |name: &str, kind, span: prism::syntax::ast::Span, members: Vec<(&str, SymbolKind)>| {
-            let span = (span.start, span.end.min(src.len()));
-            let sel = find_word(src, span, name).unwrap_or((span.0, span.0));
-            let members = members
-                .into_iter()
-                .filter_map(|(m, kind)| {
-                    let sel = find_word(src, (sel.1, span.1), m)?;
-                    Some(Member {
-                        name: m.to_string(),
-                        kind,
-                        sel,
-                    })
-                })
-                .collect();
-            items.push(Item {
-                name: name.to_string(),
+    let mut push = |name: &str, kind, span: Span, members: Vec<(&str, SymbolKind, Span)>| {
+        let span = (span.start, span.end.min(src.len()));
+        let sel = find_word(src, span, name).unwrap_or((span.0, span.0));
+        let members = members
+            .into_iter()
+            .filter(|(_, _, at)| at.end > at.start)
+            .map(|(m, kind, at)| Member {
+                name: m.to_string(),
                 kind,
-                span,
-                sel,
-                members,
-            });
-        };
+                sel: (at.start, at.end),
+            })
+            .collect();
+        items.push(Item {
+            name: name.to_string(),
+            kind,
+            span,
+            sel,
+            members,
+        });
+    };
     for d in &p.types {
         let ctors = d
             .ctors
             .iter()
-            .map(|c| (c.name.as_str(), SymbolKind::ENUM_MEMBER))
+            .map(|c| (c.name.as_str(), SymbolKind::ENUM_MEMBER, c.span))
             .collect();
         push(&d.name, SymbolKind::ENUM, d.span, ctors);
     }
@@ -57,7 +55,7 @@ pub fn outline(src: &str) -> Option<Vec<Item>> {
         let ops = d
             .ops
             .iter()
-            .map(|o| (o.name.as_str(), SymbolKind::METHOD))
+            .map(|o| (o.name.as_str(), SymbolKind::METHOD, o.span))
             .collect();
         push(&d.name, SymbolKind::INTERFACE, d.span, ops);
     }
@@ -65,7 +63,7 @@ pub fn outline(src: &str) -> Option<Vec<Item>> {
         let methods = d
             .methods
             .iter()
-            .map(|(m, _)| (m.as_str(), SymbolKind::METHOD))
+            .map(|m| (m.name.as_str(), SymbolKind::METHOD, m.span))
             .collect();
         push(&d.name, SymbolKind::INTERFACE, d.span, methods);
     }
@@ -97,21 +95,6 @@ pub fn outline(src: &str) -> Option<Vec<Item>> {
     }
     items.sort_by_key(|i| i.span.0);
     Some(items)
-}
-
-/// The definition site of `name` among `items`: a declaration or one of its members.
-pub fn lookup(items: &[Item], name: &str) -> Option<(usize, usize)> {
-    let decl = items
-        .iter()
-        .filter(|i| i.kind != SymbolKind::OBJECT)
-        .find(|i| i.name == name);
-    decl.map(|i| i.sel).or_else(|| {
-        items
-            .iter()
-            .flat_map(|i| &i.members)
-            .find(|m| m.name == name)
-            .map(|m| m.sel)
-    })
 }
 
 /// The `-- |` doc comment directly above the line containing `at`.
@@ -166,14 +149,12 @@ fn area(s: Shape) : Int =
         let items = outline(SRC).unwrap();
         let names: Vec<&str> = items.iter().map(|i| i.name.as_str()).collect();
         assert_eq!(names, ["Shape", "area"]);
-        let sq = lookup(&items, "Square").unwrap();
+        let sq = items[0].members[1].sel;
         assert_eq!(&SRC[sq.0..sq.1], "Square");
-        assert!(sq.0 < SRC.find("fn").unwrap());
-        let shape = lookup(&items, "Shape").unwrap();
         assert_eq!(
-            doc_above(SRC, shape.0).as_deref(),
+            doc_above(SRC, items[0].sel.0).as_deref(),
             Some("A shape.\nTwo kinds.")
         );
-        assert_eq!(doc_above(SRC, lookup(&items, "area").unwrap().0), None);
+        assert_eq!(doc_above(SRC, items[1].sel.0), None);
     }
 }

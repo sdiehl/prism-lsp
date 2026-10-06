@@ -160,6 +160,15 @@ fn editing_session() {
     let refs = c.at("textDocument/references", &uri, 4, 4);
     assert_eq!(refs.as_array().unwrap().len(), 3, "{refs}");
 
+    // A local: its binder and both uses, and goto from a use lands on the binder.
+    let xs = c.at("textDocument/references", &uri, 10, 6);
+    assert_eq!(xs.as_array().unwrap().len(), 3, "{xs}");
+    let binder = c.at("textDocument/definition", &uri, 11, 14);
+    assert_eq!(
+        binder["range"]["start"],
+        json!({ "line": 10, "character": 6 })
+    );
+
     let symbols = c.request(
         "textDocument/documentSymbol",
         json!({ "textDocument": { "uri": uri } }),
@@ -192,6 +201,41 @@ fn editing_session() {
     let edits = c.request("textDocument/formatting", json!({ "textDocument": { "uri": uri }, "options": { "tabSize": 2, "insertSpaces": true } }));
     assert_eq!(edits, json!([]));
 
+    c.request("shutdown", Value::Null);
+    c.notify("exit", Value::Null);
+}
+
+#[test]
+fn errors_in_an_imported_module_point_at_the_import() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/broken");
+    let path = dir.join("main.pr");
+    let uri = format!("file://{}", path.display());
+    let text = std::fs::read_to_string(&path).unwrap();
+    let mut c = Client::start();
+    let doc = json!({ "uri": uri, "languageId": "prism", "version": 1, "text": text });
+    c.notify("textDocument/didOpen", json!({ "textDocument": doc }));
+    let diags = c.diagnostics();
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert_eq!(
+        diags[0]["range"]["start"],
+        json!({ "line": 0, "character": 0 })
+    );
+    assert!(
+        diags[0]["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("in module Helper:"),
+        "{diags:?}"
+    );
+    let related = &diags[0]["relatedInformation"][0]["location"];
+    assert!(
+        related["uri"]
+            .as_str()
+            .unwrap()
+            .ends_with("/broken/Helper.pr"),
+        "{diags:?}"
+    );
+    assert_eq!(related["range"]["start"]["line"], 0);
     c.request("shutdown", Value::Null);
     c.notify("exit", Value::Null);
 }

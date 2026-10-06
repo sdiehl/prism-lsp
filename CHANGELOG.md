@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- Built against Prism v0.24.0: one `prism::analyze` pass per edit, and the compiler's own `search_path` for projects, so a custom prelude is honoured.
+- Go to definition reads the compiler's definition table instead of scanning outlines, so members whose name appears earlier in their declaration land on the right word.
+- Errors inside an imported module are reported on its `import` line, with a link to the place in the module.
+- Hover types come straight from the compiler, which now drops silent open rows itself.
+
+### Added
+
+- References and go to definition for local variables and parameters.
+
 ## [0.1.0] - 2026-10-05
 
 ### Added

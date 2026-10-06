@@ -1,0 +1,3 @@
+import Helper (..)
+
+fn main() : Unit ! {IO} = println(twice(1))

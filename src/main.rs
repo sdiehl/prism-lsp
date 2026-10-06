@@ -26,11 +26,11 @@ use lsp_types::{
     Position, PublishDiagnosticsParams, ServerCapabilities, TextDocumentSyncCapability,
     TextDocumentSyncKind, TextEdit, Url,
 };
-use prism::Root;
+use prism::SearchPath;
 
-use analysis::{Analysis, analyze};
+use analysis::{Analysis, Def, Ref, analyze};
 use lines::Lines;
-use locate::{Locator, roots_for};
+use locate::{Files, search_for};
 use outline::{Item, doc_above, outline};
 
 type Res<T> = Result<T, Box<dyn Error + Send + Sync>>;
@@ -68,19 +68,23 @@ fn serve() -> Res<()> {
     };
     conn.initialize(serde_json::to_value(caps)?)?;
     let analyses = Arc::default();
+    let files = Arc::new(Files::new());
     let (jobs, rx) = crossbeam_channel::unbounded();
     {
-        let (sender, analyses) = (conn.sender.clone(), Arc::clone(&analyses));
+        let (sender, analyses, files) = (
+            conn.sender.clone(),
+            Arc::clone(&analyses),
+            Arc::clone(&files),
+        );
         thread::Builder::new()
             .name("prism-check".into())
             .stack_size(STACK)
-            .spawn(move || worker(&rx, &sender, &analyses))?;
+            .spawn(move || worker(&rx, &sender, &analyses, &files))?;
     }
     let mut server = Server {
         docs: HashMap::new(),
         analyses,
         jobs,
-        locator: Locator::new(),
     };
     for msg in &conn.receiver {
         match msg {
@@ -113,7 +117,7 @@ fn serve() -> Res<()> {
 struct Doc {
     version: i32,
     text: String,
-    roots: Arc<Vec<Root>>,
+    search: Arc<SearchPath>,
     outline: Vec<Item>,
 }
 
@@ -121,7 +125,7 @@ struct Job {
     uri: Url,
     version: i32,
     text: Option<String>,
-    roots: Arc<Vec<Root>>,
+    search: Arc<SearchPath>,
 }
 
 type Analyses = Arc<Mutex<HashMap<Url, Arc<Analysis>>>>;
@@ -130,7 +134,6 @@ struct Server {
     docs: HashMap<Url, Doc>,
     analyses: Analyses,
     jobs: Sender<Job>,
-    locator: Locator,
 }
 
 impl Server {
@@ -157,7 +160,7 @@ impl Server {
                     uri: p.text_document.uri,
                     version: doc.version,
                     text: None,
-                    roots: doc.roots,
+                    search: doc.search,
                 };
                 Ok(self.jobs.send(job)?)
             }
@@ -166,11 +169,11 @@ impl Server {
     }
 
     fn update(&mut self, uri: Url, version: i32, text: String) -> Res<()> {
-        let roots = match self.docs.get(&uri) {
-            Some(doc) => Arc::clone(&doc.roots),
-            None => Arc::new(uri.to_file_path().map_or_else(
-                |()| prism::default_roots(&PathBuf::from(".")),
-                |p| roots_for(&p),
+        let search = match self.docs.get(&uri) {
+            Some(doc) => Arc::clone(&doc.search),
+            None => Arc::new(search_for(
+                &uri.to_file_path()
+                    .unwrap_or_else(|()| PathBuf::from("untitled.pr")),
             )),
         };
         let prev = self
@@ -183,14 +186,14 @@ impl Server {
             uri: uri.clone(),
             version,
             text: Some(text.clone()),
-            roots: Arc::clone(&roots),
+            search: Arc::clone(&search),
         })?;
         self.docs.insert(
             uri,
             Doc {
                 version,
                 text,
-                roots,
+                search,
                 outline,
             },
         );
@@ -246,26 +249,28 @@ impl Server {
         (analysis.version == doc.version).then_some((doc, analysis))
     }
 
-    fn hover(&mut self, uri: &Url, pos: Position) -> Option<Hover> {
+    fn hover(&self, uri: &Url, pos: Position) -> Option<Hover> {
         let (doc, analysis) = self.current(uri)?;
         let lines = Lines::new(&doc.text);
         let at = lines.offset(pos);
         let span = analysis.type_at(at)?;
         let label = &doc.text[span.start..span.end];
-        let ty = pure(&span.rendered);
+        let ty = &span.rendered;
         let shown = match span.level.tag() {
             "" | "patternvar" | "hole" | "logic" if is_label(label) => format!("{label} : {ty}"),
             _ => ty.to_string(),
         };
         let mut value = format!("```prism\n{shown}\n```");
         let range = lines.range(span.start, span.end);
-        let target = analysis.ref_at(at).map(|r| r.target.clone()).or_else(|| {
-            doc.outline
+        let target = match analysis.ref_at(at) {
+            Some(r) => r.local.is_none().then(|| r.target.clone()),
+            None => doc
+                .outline
                 .iter()
                 .find(|i| i.sel.0 <= at && at <= i.sel.1)
-                .map(|i| i.name.clone())
-        });
-        if let Some(docs) = target.and_then(|t| self.docs_of(uri, &t)) {
+                .map(|i| i.name.clone()),
+        };
+        if let Some(docs) = target.and_then(|t| docs_of(doc, &analysis, &t)) {
             value.push_str("\n\n---\n\n");
             value.push_str(&docs);
         }
@@ -278,43 +283,36 @@ impl Server {
         })
     }
 
-    fn docs_of(&mut self, uri: &Url, target: &str) -> Option<String> {
-        let doc = self.docs.get(uri)?;
-        let (file, (start, _)) = self.locator.define(target, &doc.roots, &doc.outline)?;
-        match file {
-            None => doc_above(&doc.text, start),
-            Some(file) => doc_above(&std::fs::read_to_string(file).ok()?, start),
-        }
-    }
-
-    fn definition(&mut self, uri: &Url, pos: Position) -> Option<Location> {
+    fn definition(&self, uri: &Url, pos: Position) -> Option<Location> {
         let (doc, analysis) = self.current(uri)?;
-        let at = Lines::new(&doc.text).offset(pos);
-        let target = analysis.ref_at(at)?.target.clone();
-        self.location(uri, &target)
-    }
-
-    fn location(&mut self, uri: &Url, target: &str) -> Option<Location> {
-        let doc = self.docs.get(uri)?;
-        match self.locator.define(target, &doc.roots, &doc.outline)? {
-            (None, (s, e)) => Some(Location::new(
-                uri.clone(),
-                Lines::new(&doc.text).range(s, e),
-            )),
-            (Some(file), (s, e)) => {
-                let text = std::fs::read_to_string(&file).ok()?;
+        let r = analysis.ref_at(Lines::new(&doc.text).offset(pos))?;
+        match r.local {
+            Some(binder) => {
+                let site = analysis.refs.iter().find(|s| s.start == binder)?;
+                let lines = Lines::new(&doc.text);
                 Some(Location::new(
-                    Url::from_file_path(&file).ok()?,
-                    Lines::new(&text).range(s, e),
+                    uri.clone(),
+                    lines.range(site.start, site.end),
                 ))
             }
+            None => location(uri, doc, analysis.def(&r.target)?),
         }
     }
 
-    fn references(&mut self, uri: &Url, pos: Position, with_decl: bool) -> Option<Vec<Location>> {
+    fn references(&self, uri: &Url, pos: Position, with_decl: bool) -> Option<Vec<Location>> {
         let (doc, analysis) = self.current(uri)?;
         let lines = Lines::new(&doc.text);
         let at = lines.offset(pos);
+        let here = |r: &Ref| Location::new(uri.clone(), lines.range(r.start, r.end));
+        if let Some(binder) = analysis.ref_at(at).and_then(|r| r.local) {
+            let locs = analysis
+                .refs
+                .iter()
+                .filter(|r| r.local == Some(binder) && (with_decl || r.start != binder))
+                .map(here)
+                .collect();
+            return Some(locs);
+        }
         let target = match analysis.ref_at(at) {
             Some(r) => r.target.clone(),
             None => decl_at(&doc.outline, at)?,
@@ -322,11 +320,11 @@ impl Server {
         let mut locs: Vec<Location> = analysis
             .refs
             .iter()
-            .filter(|r| r.target == target)
-            .map(|r| Location::new(uri.clone(), lines.range(r.start, r.end)))
+            .filter(|r| r.local.is_none() && r.target == target)
+            .map(here)
             .collect();
         if with_decl {
-            locs.extend(self.location(uri, &target));
+            locs.extend(analysis.def(&target).and_then(|d| location(uri, doc, d)));
         }
         Some(locs)
     }
@@ -392,17 +390,28 @@ fn decl_at(items: &[Item], at: usize) -> Option<String> {
         .map(|(name, _)| name.clone())
 }
 
-// `Int ! {| e0}` is an open row with no labels: nothing is performed here.
-fn pure(ty: &str) -> &str {
-    match ty.rsplit_once(" ! {| ") {
-        Some((ty, tail))
-            if tail
-                .strip_suffix('}')
-                .is_some_and(|v| v.chars().all(|c| c.is_alphanumeric() || c == '_')) =>
-        {
-            ty
+// The doc comment above a name's definition.
+fn docs_of(doc: &Doc, analysis: &Analysis, target: &str) -> Option<String> {
+    let def = analysis.def(target)?;
+    match &def.file {
+        None => doc_above(&doc.text, def.start),
+        Some(file) => doc_above(&std::fs::read_to_string(file).ok()?, def.start),
+    }
+}
+
+fn location(uri: &Url, doc: &Doc, def: &Def) -> Option<Location> {
+    match &def.file {
+        None => Some(Location::new(
+            uri.clone(),
+            Lines::new(&doc.text).range(def.start, def.end),
+        )),
+        Some(file) => {
+            let text = std::fs::read_to_string(file).ok()?;
+            Some(Location::new(
+                Url::from_file_path(file).ok()?,
+                Lines::new(&text).range(def.start, def.end),
+            ))
         }
-        _ => ty,
     }
 }
 
@@ -410,7 +419,7 @@ fn is_label(text: &str) -> bool {
     text.len() <= LABEL_MAX && !text.contains(char::is_whitespace)
 }
 
-fn worker(rx: &Receiver<Job>, sender: &Sender<Message>, analyses: &Analyses) {
+fn worker(rx: &Receiver<Job>, sender: &Sender<Message>, analyses: &Analyses, files: &Files) {
     while let Ok(first) = rx.recv() {
         let mut pending = HashMap::from([(first.uri.clone(), first)]);
         while let Ok(job) = rx.recv_timeout(SETTLE) {
@@ -424,7 +433,7 @@ fn worker(rx: &Receiver<Job>, sender: &Sender<Message>, analyses: &Analyses) {
                 }
                 Some(text) => {
                     let analysis = catch_unwind(AssertUnwindSafe(|| {
-                        analyze(&job.uri, job.version, text, &job.roots)
+                        analyze(&job.uri, job.version, text, &job.search, files)
                     }))
                     .unwrap_or_else(|_| crashed(job.version));
                     let diagnostics = analysis.diagnostics.clone();
