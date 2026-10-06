@@ -757,7 +757,8 @@ checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
 name = "prism"
-version = "0.23.0"
+version = "0.24.0"
+source = "git+https://github.com/sdiehl/prism?tag=v0.24.0#0da11d320412dd7b921c05fc9c2ea8ca9c7a7ad2"
 dependencies = [
  "anstyle",
  "ariadne",
@@ -784,7 +785,8 @@ dependencies = [
 
 [[package]]
 name = "prism-common"
-version = "0.23.0"
+version = "0.24.0"
+source = "git+https://github.com/sdiehl/prism?tag=v0.24.0#0da11d320412dd7b921c05fc9c2ea8ca9c7a7ad2"
 dependencies = [
  "serde",
  "serde_json",
@@ -793,7 +795,8 @@ dependencies = [
 
 [[package]]
 name = "prism-core"
-version = "0.23.0"
+version = "0.24.0"
+source = "git+https://github.com/sdiehl/prism?tag=v0.24.0#0da11d320412dd7b921c05fc9c2ea8ca9c7a7ad2"
 dependencies = [
  "blake3",
  "num-bigint",
@@ -809,7 +812,8 @@ dependencies = [
 
 [[package]]
 name = "prism-lineage"
-version = "0.23.0"
+version = "0.24.0"
+source = "git+https://github.com/sdiehl/prism?tag=v0.24.0#0da11d320412dd7b921c05fc9c2ea8ca9c7a7ad2"
 dependencies = [
  "blake3",
  "prism-common",
@@ -834,7 +838,8 @@ dependencies = [
 
 [[package]]
 name = "prism-store"
-version = "0.23.0"
+version = "0.24.0"
+source = "git+https://github.com/sdiehl/prism?tag=v0.24.0#0da11d320412dd7b921c05fc9c2ea8ca9c7a7ad2"
 dependencies = [
  "blake3",
  "prism-common",
@@ -845,7 +850,8 @@ dependencies = [
 
 [[package]]
 name = "prism-syntax"
-version = "0.23.0"
+version = "0.24.0"
+source = "git+https://github.com/sdiehl/prism?tag=v0.24.0#0da11d320412dd7b921c05fc9c2ea8ca9c7a7ad2"
 dependencies = [
  "anstyle",
  "ariadne",
